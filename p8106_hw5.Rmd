@@ -1,0 +1,158 @@
+---
+title: "p8106_hw5"
+author: "Hao Zheng (hz2770)"
+date: "5/3/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(kernlab)
+library(e1071)
+library(ISLR)
+library(RColorBrewer)
+library(gplots)
+library(factoextra)
+
+```
+
+## Problem 1
+```{r}
+# Data Import
+auto_data = 
+  read.csv("./auto.csv") %>% 
+  na.omit() %>% 
+  mutate(mpg_cat = factor((mpg_cat), levels = c("low", "high")))
+
+set.seed(2022)
+rowTrain<- createDataPartition(y = auto_data$mpg_cat,
+                               p = 0.7,
+                               list = FALSE)
+```
+
+### a) Fit a support vector classifier(linear kernal)
+```{r}
+set.seed(2022)
+linear.tune <- tune.svm(mpg_cat ~ .,
+                        data = auto_data[rowTrain,],
+                        kernel = "linear",
+                        cost = exp(seq(-5, 0, len = 50)),
+                        scale = TRUE)
+plot(linear.tune)
+
+# show the best parameters
+linear.tune$best.parameters
+
+best.linear <- linear.tune$best.model
+
+summary(best.linear)
+
+# Training error rate
+confusionMatrix(data = best.linear$fitted,
+                reference = auto_data$mpg_cat[rowTrain])
+
+# Test error rate of the support vector classifier
+pred.linear <- predict(best.linear, newdata = auto_data[-rowTrain,])
+confusionMatrix(data = pred.linear,
+                reference = auto_data$mpg_cat[-rowTrain])
+```
+
+For the training data, the accuracy of the fitted support vector classifier is 0.9203, so the error rate is 1-0.9203 = 0.0797. The accuracy when applied the model to the test data is 0.8879, means that the error rate is 1-0.8878 = 0.1121.
+
+We can visualize the data for the predictors displacement and horsepower to see how well does the model works.
+```{r}
+plot(best.linear, auto_data[rowTrain,],
+     weight ~ horsepower,
+     slice = list(displacement = 8, cylinders = 8,
+                  acceleration = 18, year = 72,
+                  origin = 2),
+     grid = 50)
+```
+
+### b) Fit a support vector machine 
+```{r}
+set.seed(2022)
+radial.tune <- tune.svm(mpg_cat ~ .,
+                        data = auto_data[rowTrain,],
+                        kernel = "radial",
+                        cost = exp(seq(-1,4,len = 20)),
+                        gamma = exp(seq(-6,-2,len = 20)))
+plot(radial.tune, transform.y = log, transform.x = log,
+     color.palette = terrain.colors)
+
+best.radial <- radial.tune$best.model
+summary(best.radial)
+
+# Training error rate
+confusionMatrix(data = best.radial$fitted,
+                reference = auto_data$mpg_cat[rowTrain])
+
+# Test error rate
+pred.radial <- predict(best.radial, newdata = auto_data[-rowTrain,])
+confusionMatrix(data = pred.radial,
+                reference = auto_data$mpg_cat[-rowTrain])
+```
+
+The training error rate for the support vector machine is 1-0.9384 = 0.0616. The test error rate is 1-0.8879 = 0.1121.
+
+```{r}
+plot(best.radial, auto_data[rowTrain,],
+     displacement ~ weight,
+     slice = list(cylinders = 8, horsepower = 100,
+                  acceleration = 18, year = 72,
+                  origin = 2),
+     grid = 100,
+     symbolPalette = c("cyan","darkblue"),
+     color.palette = heat.colors)
+```
+
+
+## Problem 2
+```{r}
+data(USArrests)
+```
+
+### a) Hierarchical clustering for the original data
+```{r}
+hc.complete <- hclust(dist(USArrests), method = "complete")
+fviz_dend(hc.complete, k = 3,
+          cex = 0.3,
+          palette = "jco",
+          color_labels_by_k = TRUE,
+          rect = TRUE, rect_fill = TRUE, rect_border = "jco",
+          labels_track_height = 2.5)
+
+ind3.complete <- cutree(hc.complete, 3)
+
+# The states in different clusters
+cl1 <- rownames(USArrests[ind3.complete == 1,]); cl1
+cl2 <- rownames(USArrests[ind3.complete == 2,]); cl2
+cl3 <- rownames(USArrests[ind3.complete == 3,]); cl3
+
+```
+
+### b) Hierarchical clustering for the scaled data
+```{r}
+df <- scale(USArrests)
+
+hc.complete.scaled <- hclust(dist(df), method = "complete")
+fviz_dend(hc.complete.scaled, k = 3,
+          cex = 0.3,
+          palette = "jco",
+          color_labels_by_k = TRUE,
+          rect = TRUE, rect_fill = TRUE, rect_border = "jco",
+          labels_track_height = 2.5)
+
+ind3.complete.scaled <- cutree(hc.complete.scaled, 3)
+
+# The states in different clusters for standardized data
+scaled.cl1 <- rownames(USArrests[ind3.complete == 1,]); scaled.cl1
+scaled.cl2 <- rownames(USArrests[ind3.complete == 2,]); scaled.cl2
+scaled.cl3 <- rownames(USArrests[ind3.complete == 3,]); scaled.cl3
+```
+
+### c) Comparison
+The scaling does change the results of clustering. The two hierarchical clustering models are quite different. For the second one, which has the data standardized, the states in the same cluster share more similarities than the first model. The results are changed because the algorithm will assign larger weight to the predictors with larger value, which will confound the result. Therefore, the variables should be scaled before the inter-observation dissimilarities are computed in order to ensure that the variables have equal importance regardless of their magnitude, which can also lead us to more similarities in the same cluster.
+
